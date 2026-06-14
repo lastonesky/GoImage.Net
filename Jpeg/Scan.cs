@@ -130,7 +130,11 @@ public partial class Decoder
             {
                 int ci = scanCompIndex[i];
                 if (_progCoeffs![ci] == null)
+                {
                     _progCoeffs[ci] = new Block[mxx * myy * _comp[ci].h * _comp[ci].v];
+                    for (int bi = 0; bi < _progCoeffs[ci].Length; bi++)
+                        _progCoeffs[ci][bi] = new Block();
+                }
             }
         }
 
@@ -140,6 +144,8 @@ public partial class Decoder
         var dc = new int[Const.maxComponents];
         int bx = 0, by = 0, blockCount = 0;
 
+        try
+        {
         for (int my = 0; my < myy; my++)
         {
             for (int mx = 0; mx < mxx; mx++)
@@ -246,6 +252,11 @@ public partial class Decoder
                     _eobRun = 0;
                 }
             }
+        }
+        }
+        catch (MissingFF00Exception)
+        {
+            // End of scan: bit reader hit a marker byte.
         }
     }
 

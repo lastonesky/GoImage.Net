@@ -187,7 +187,11 @@ public partial class Decoder
             _nUnreadable = 1;
             if (x != 0xff) return x;
             if (_bytesBuf[_bytesI] != 0x00)
+            {
+                _bytesI--; // Unread the 0xFF byte so the marker loop can find it.
+                _nUnreadable = 0;
                 throw new MissingFF00Exception();
+            }
             _bytesI++;
             _nUnreadable = 2;
             return 0xff;
@@ -198,9 +202,12 @@ public partial class Decoder
         _nUnreadable = 1;
         if (xx != 0xff) return xx;
         xx = ReadByte();
-        _nUnreadable = 2;
         if (xx != 0x00)
+        {
+            _nUnreadable = 0;
             throw new MissingFF00Exception();
+        }
+        _nUnreadable = 2;
         return 0xff;
     }
 
@@ -454,6 +461,12 @@ public partial class Decoder
                 case Const.sosMarker:
                     if (configOnly) return null;
                     ProcessSOS(nn);
+                    // Reset the Huffman decoder state, since we just finished a scan.
+                    _bits = default;
+                    // Undo the readByteStuffedByte so the main marker loop
+                    // can correctly pick up the next marker.
+                    if (_nUnreadable > 0)
+                        UnreadByteStuffedByte();
                     break;
                 case Const.driMarker:
                     if (configOnly) Ignore(nn); else ProcessDRI(nn);
