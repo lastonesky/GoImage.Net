@@ -130,6 +130,12 @@ public partial class Decoder
     public Decoder()
     {
         _r = Stream.Null;
+        // Initialize Block.Data arrays (C# default struct init doesn't call constructors)
+        for (int i = 0; i < _quant.Length; i++)
+            _quant[i] = new Block();
+        for (int i = 0; i < _huff.GetLength(0); i++)
+            for (int j = 0; j < _huff.GetLength(1); j++)
+                _huff[i, j] = Huffman.New();
     }
 
     // ---- Byte reading ----
@@ -396,7 +402,21 @@ public partial class Decoder
         // Process segments until EOI
         while (true)
         {
-            ReadFull(_tmp, 0, 2);
+            try
+            {
+                ReadFull(_tmp, 0, 2);
+            }
+            catch (EndOfStreamException)
+            {
+                // Go handles EOF gracefully: if we already decoded an image, return it
+                if (_img1 != null || _img3 != null) break;
+                throw;
+            }
+            catch (FormatErrorException) when (_img1 != null || _img3 != null)
+            {
+                // After SOS data, EOF during marker scan is acceptable if image exists
+                break;
+            }
             while (_tmp[0] != 0xff)
             {
                 _tmp[0] = _tmp[1];

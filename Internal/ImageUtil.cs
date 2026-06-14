@@ -105,15 +105,15 @@ public static class ImageUtil
         int cr1 = cr - 128;
 
         int r = yy1 + 91881 * cr1;
-        if ((uint)r << 8 == 0) r >>= 16;
+        if (((uint)r & 0xff000000) == 0) r >>= 16;
         else r = ~(r >> 31);
 
         int g = yy1 - 22554 * cb1 - 46802 * cr1;
-        if ((uint)g << 8 == 0) g >>= 16;
+        if (((uint)g & 0xff000000) == 0) g >>= 16;
         else g = ~(g >> 31);
 
         int b = yy1 + 116130 * cb1;
-        if ((uint)b << 8 == 0) b >>= 16;
+        if (((uint)b & 0xff000000) == 0) b >>= 16;
         else b = ~(b >> 31);
 
         pix[offset] = (byte)r;

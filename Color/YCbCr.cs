@@ -15,14 +15,14 @@ public static class YCbCrUtil
 
         int yy = (19595 * r1 + 38470 * g1 + 7471 * b1 + (1 << 15)) >> 16;
 
-        int cb = -11056 * r1 - 21712 * g1 + 32768 * b1 + 257 << 15;
-        if ((uint)cb << 8 == 0) // check high 8 bits: (uint)cb & 0xff000000 == 0
+        int cb = -11056 * r1 - 21712 * g1 + 32768 * b1 + (257 << 15);
+        if (((uint)cb & 0xff000000) == 0)
             cb >>= 16;
         else
             cb = ~(cb >> 31);
 
-        int cr = 32768 * r1 - 27440 * g1 - 5328 * b1 + 257 << 15;
-        if ((uint)cr << 8 == 0)
+        int cr = 32768 * r1 - 27440 * g1 - 5328 * b1 + (257 << 15);
+        if (((uint)cr & 0xff000000) == 0)
             cr >>= 16;
         else
             cr = ~(cr >> 31);
@@ -40,19 +40,19 @@ public static class YCbCrUtil
         int cr1 = cr - 128;
 
         int r = yy1 + 91881 * cr1;
-        if ((uint)r << 8 == 0)
+        if (((uint)r & 0xff000000) == 0)
             r >>= 16;
         else
             r = ~(r >> 31);
 
         int g = yy1 - 22554 * cb1 - 46802 * cr1;
-        if ((uint)g << 8 == 0)
+        if (((uint)g & 0xff000000) == 0)
             g >>= 16;
         else
             g = ~(g >> 31);
 
         int b = yy1 + 116130 * cb1;
-        if ((uint)b << 8 == 0)
+        if (((uint)b & 0xff000000) == 0)
             b >>= 16;
         else
             b = ~(b >> 31);
@@ -108,19 +108,19 @@ public struct YCbCrColor : IColor
         int cr1 = Cr - 128;
 
         int r = yy1 + 91881 * cr1;
-        if ((uint)r << 8 == 0)
+        if (((uint)r & 0xff000000) == 0)
             r >>= 8;
         else
             r = ~(r >> 31) & 0xffff;
 
         int g = yy1 - 22554 * cb1 - 46802 * cr1;
-        if ((uint)g << 8 == 0)
+        if (((uint)g & 0xff000000) == 0)
             g >>= 8;
         else
             g = ~(g >> 31) & 0xffff;
 
         int b = yy1 + 116130 * cb1;
-        if ((uint)b << 8 == 0)
+        if (((uint)b & 0xff000000) == 0)
             b >>= 8;
         else
             b = ~(b >> 31) & 0xffff;
@@ -172,19 +172,19 @@ public struct NYCbCrAColor : IColor
         int cr1 = YCbCr.Cr - 128;
 
         int r = yy1 + 91881 * cr1;
-        if ((uint)r << 8 == 0)
+        if (((uint)r & 0xff000000) == 0)
             r >>= 8;
         else
             r = ~(r >> 31) & 0xffff;
 
         int g = yy1 - 22554 * cb1 - 46802 * cr1;
-        if ((uint)g << 8 == 0)
+        if (((uint)g & 0xff000000) == 0)
             g >>= 8;
         else
             g = ~(g >> 31) & 0xffff;
 
         int b = yy1 + 116130 * cb1;
-        if ((uint)b << 8 == 0)
+        if (((uint)b & 0xff000000) == 0)
             b >>= 8;
         else
             b = ~(b >> 31) & 0xffff;
