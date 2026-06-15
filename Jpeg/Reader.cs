@@ -130,9 +130,6 @@ public partial class Decoder
     public Decoder()
     {
         _r = Stream.Null;
-        // Initialize Block.Data arrays (C# default struct init doesn't call constructors)
-        for (int i = 0; i < _quant.Length; i++)
-            _quant[i] = new Block();
         for (int i = 0; i < _huff.GetLength(0); i++)
             for (int j = 0; j < _huff.GetLength(1); j++)
                 _huff[i, j] = Huffman.New();

@@ -2,6 +2,8 @@
 
 namespace GoImage.Jpeg;
 
+using System.Runtime.CompilerServices;
+
 /// <summary>
 /// errShortHuffmanData means an unexpected EOF occurred while decoding Huffman data.
 /// </summary>
@@ -168,6 +170,7 @@ public partial class Decoder
     /// <summary>
     /// decodeHuffman returns the next Huffman-coded value from the bit-stream.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal byte DecodeHuffman(ref Huffman h)
     {
         if (h.NCodes == 0)

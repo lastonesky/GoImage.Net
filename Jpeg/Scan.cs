@@ -62,7 +62,7 @@ public partial class Decoder
     /// <summary>
     /// processSOS processes a Start Of Scan marker (section B.2.3).
     /// </summary>
-    internal void ProcessSOS(int n)
+    internal unsafe void ProcessSOS(int n)
     {
         if (_nComp == 0) throw new FormatErrorException("missing SOF marker");
         if (n < 6 || 4 + 2 * _nComp < n || n % 2 != 0)
@@ -132,8 +132,6 @@ public partial class Decoder
                 if (_progCoeffs![ci] == null)
                 {
                     _progCoeffs[ci] = new Block[mxx * myy * _comp[ci].h * _comp[ci].v];
-                    for (int bi = 0; bi < _progCoeffs[ci].Length; bi++)
-                        _progCoeffs[ci][bi] = new Block();
                 }
             }
         }
@@ -175,7 +173,7 @@ public partial class Decoder
                         if (_progressive)
                             b = _progCoeffs![compIndex][by * mxx * hi + bx];
                         else
-                            b = new Block();
+                            b = default;
 
                         if (ah != 0)
                         {
@@ -269,7 +267,7 @@ public partial class Decoder
     /// <summary>
     /// refine decodes a successive approximation refinement block (section G.1.2).
     /// </summary>
-    internal void Refine(ref Block b, ref Huffman h, int zigStart, int zigEnd, int delta)
+    internal unsafe void Refine(ref Block b, ref Huffman h, int zigStart, int zigEnd, int delta)
     {
         if (zigStart == 0)
         {
@@ -326,7 +324,7 @@ public partial class Decoder
         }
     }
 
-    internal void RefineNonZeroes(ref Block b, ref int zig, int zigEnd, int nz, int delta)
+    internal unsafe void RefineNonZeroes(ref Block b, ref int zig, int zigEnd, int nz, int delta)
     {
         for (; zig <= zigEnd; zig++)
         {
@@ -369,14 +367,15 @@ public partial class Decoder
     /// <summary>
     /// reconstructBlock dequantizes, performs IDCT, and stores the block to the image.
     /// </summary>
-    internal void ReconstructBlock(ref Block b, int bx, int by, int compIndex)
+    internal unsafe void ReconstructBlock(ref Block b, int bx, int by, int compIndex)
     {
         ref Block qt = ref _quant[_comp[compIndex].tq];
-        var bData = b.Data;
-        var qtData = qt.Data;
-        for (int zz = 0; zz < Block.BlockSize; zz++)
+        fixed (int* bData = b.Data, qtData = qt.Data)
         {
-            bData[Unzig.Table[zz]] *= qtData[zz];
+            for (int zz = 0; zz < Block.BlockSize; zz++)
+            {
+                bData[Unzig.Table[zz]] *= qtData[zz];
+            }
         }
         Dct.Idct(ref b);
 
@@ -412,28 +411,31 @@ public partial class Decoder
         }
 
         int dstBase = channelOff + 8 * (by * stride + bx);
-        if (_flex)
+        fixed (int* bData = b.Data)
         {
-            for (int y = 0; y < 8; y++)
+            if (_flex)
             {
-                int y8 = y * 8, yv = y * v;
-                for (int x = 0; x < 8; x++)
+                for (int y = 0; y < 8; y++)
                 {
-                    byte val = (byte)Math.Clamp(bData[y8 + x] + 128, 0, 255);
-                    int xh = x * h;
-                    for (int yy = 0; yy < v; yy++)
-                        for (int xx = 0; xx < h; xx++)
-                            dst[dstBase + (yv + yy) * stride + xh + xx] = val;
+                    int y8 = y * 8, yv = y * v;
+                    for (int x = 0; x < 8; x++)
+                    {
+                        byte val = (byte)Math.Clamp(bData[y8 + x] + 128, 0, 255);
+                        int xh = x * h;
+                        for (int yy = 0; yy < v; yy++)
+                            for (int xx = 0; xx < h; xx++)
+                                dst[dstBase + (yv + yy) * stride + xh + xx] = val;
+                    }
                 }
             }
-        }
-        else
-        {
-            for (int y = 0; y < 8; y++)
+            else
             {
-                int y8 = y * 8, yStride = y * stride;
-                for (int x = 0; x < 8; x++)
-                    dst[dstBase + yStride + x] = (byte)Math.Clamp(bData[y8 + x] + 128, 0, 255);
+                for (int y = 0; y < 8; y++)
+                {
+                    int y8 = y * 8, yStride = y * stride;
+                    for (int x = 0; x < 8; x++)
+                        dst[dstBase + yStride + x] = (byte)Math.Clamp(bData[y8 + x] + 128, 0, 255);
+                }
             }
         }
     }

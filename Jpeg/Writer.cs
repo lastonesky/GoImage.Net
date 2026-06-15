@@ -334,7 +334,7 @@ public class Encoder
         }
     }
 
-    int WriteBlock(ref Block b, QuantIndex q, int prevDC)
+    unsafe int WriteBlock(ref Block b, QuantIndex q, int prevDC)
     {
         Dct.Fdct(ref b);
         int dc = Div(b[0], 8 * (int)_encQuant[(int)q][0]);
@@ -360,7 +360,7 @@ public class Encoder
         return dc;
     }
 
-    static void ToYCbCr(IImage m, Point p, ref Block yBlock, ref Block cbBlock, ref Block crBlock)
+    static unsafe void ToYCbCr(IImage m, Point p, ref Block yBlock, ref Block cbBlock, ref Block crBlock)
     {
         var b = m.Bounds();
         int xmax = b.Max.X - 1, ymax = b.Max.Y - 1;
@@ -377,7 +377,7 @@ public class Encoder
         }
     }
 
-    static void GrayToY(GoImage.Image.Gray m, Point p, ref Block yBlock)
+    static unsafe void GrayToY(GoImage.Image.Gray m, Point p, ref Block yBlock)
     {
         var b = m.Bounds();
         int xmax = b.Max.X - 1, ymax = b.Max.Y - 1;
@@ -386,19 +386,22 @@ public class Encoder
                 yBlock[8 * j + i] = m.Pix[m.PixOffset(Math.Min(p.X + i, xmax), Math.Min(p.Y + j, ymax))];
     }
 
-    static void Scale(ref Block dst, ref Block src0, ref Block src1, ref Block src2, ref Block src3)
+    static unsafe void Scale(ref Block dst, ref Block src0, ref Block src1, ref Block src2, ref Block src3)
     {
-        var srcArr = new[] { src0.Data, src1.Data, src2.Data, src3.Data };
-        for (int i = 0; i < 4; i++)
+        fixed (int* pSrc0 = src0.Data, pSrc1 = src1.Data, pSrc2 = src2.Data, pSrc3 = src3.Data)
         {
-            int dstOff = ((i & 2) << 4) | ((i & 1) << 2);
-            for (int y = 0; y < 4; y++)
+            int*[] srcArr = { pSrc0, pSrc1, pSrc2, pSrc3 };
+            for (int i = 0; i < 4; i++)
             {
-                for (int x = 0; x < 4; x++)
+                int dstOff = ((i & 2) << 4) | ((i & 1) << 2);
+                for (int y = 0; y < 4; y++)
                 {
-                    int j = 16 * y + 2 * x;
-                    int sum = srcArr[i][j] + srcArr[i][j + 1] + srcArr[i][j + 8] + srcArr[i][j + 9];
-                    dst[8 * y + x + dstOff] = (sum + 2) >> 2;
+                    for (int x = 0; x < 4; x++)
+                    {
+                        int j = 16 * y + 2 * x;
+                        int sum = srcArr[i][j] + srcArr[i][j + 1] + srcArr[i][j + 8] + srcArr[i][j + 9];
+                        dst[8 * y + x + dstOff] = (sum + 2) >> 2;
+                    }
                 }
             }
         }
@@ -409,9 +412,9 @@ public class Encoder
         if (m is GoImage.Image.Gray) Write(SosHeaderY);
         else Write(SosHeaderYCbCr);
 
-        Block b = new Block();
-        Block[] cb = { new Block(), new Block(), new Block(), new Block() };
-        Block[] cr = { new Block(), new Block(), new Block(), new Block() };
+        Block b = default;
+        Block[] cb = new Block[4];
+        Block[] cr = new Block[4];
         int prevDCY = 0, prevDCCb = 0, prevDCCr = 0;
 
         var bounds = m.Bounds();
@@ -458,7 +461,7 @@ public class Encoder
         Emit(0x7f, 7); // Pad last byte with 1's
     }
 
-    static void RgbaToYCbCr(GoImage.Image.RGBA m, Point p, ref Block yBlock, ref Block cbBlock, ref Block crBlock)
+    static unsafe void RgbaToYCbCr(GoImage.Image.RGBA m, Point p, ref Block yBlock, ref Block cbBlock, ref Block crBlock)
     {
         var b = m.Bounds();
         int xmax = b.Max.X - 1, ymax = b.Max.Y - 1;
@@ -478,7 +481,7 @@ public class Encoder
         }
     }
 
-    static void YCbCrToYCbCrEnc(GoImage.Image.YCbCr m, Point p, ref Block yBlock, ref Block cbBlock, ref Block crBlock)
+    static unsafe void YCbCrToYCbCrEnc(GoImage.Image.YCbCr m, Point p, ref Block yBlock, ref Block cbBlock, ref Block crBlock)
     {
         var b = m.Bounds();
         int xmax = b.Max.X - 1, ymax = b.Max.Y - 1;
