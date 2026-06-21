@@ -14,9 +14,33 @@ public static class GifWriter
 {
     public static void Encode(Stream w, IImage img)
     {
+        var palette = new WuQuantizer().Quantize(img, 256);
+        EncodeWithPalette(w, img, palette);
+    }
+
+    /// <summary>
+    /// Encode writes the image to w in GIF format using the caller-supplied
+    /// palette (must contain 1–256 entries; padded/truncated to 256).
+    /// </summary>
+    public static void Encode(Stream w, IImage img, Palette palette)
+    {
+        EncodeWithPalette(w, img, palette);
+    }
+
+    private static void EncodeWithPalette(Stream w, IImage img, Palette palette)
+    {
         var b = img.Bounds();
         int width = b.Dx();
         int height = b.Dy();
+
+        // Ensure palette has exactly 256 entries.
+        if (palette.Count < 256)
+        {
+            var padded = new Palette(palette);
+            while (padded.Count < 256)
+                padded.Add(new GoImage.Color.RGBA(0, 0, 0, 255));
+            palette = padded;
+        }
 
         // Header
         w.Write(System.Text.Encoding.ASCII.GetBytes("GIF89a"));
@@ -25,24 +49,24 @@ public static class GifWriter
         byte[] lsd = new byte[7];
         BinaryPrimitives.WriteUInt16LittleEndian(lsd.AsSpan(0, 2), (ushort)width);
         BinaryPrimitives.WriteUInt16LittleEndian(lsd.AsSpan(2, 2), (ushort)height);
-        
-        // Use a simple global palette if possible. For simplicity, we'll generate one.
-        var paletted = Paletted.NewPaletted(b, Palette.Plan9); // Simple default palette
-        Drawer.Draw(paletted, b, img, b.Min, Op.Src);
-        
-        lsd[4] = 0x80 | 7; // Has global palette, 256 colors
+
+        lsd[4] = 0x80 | 7; // Has global palette, 256 colors (2^(7+1))
         lsd[5] = 0; // Background color index
         lsd[6] = 0; // Pixel aspect ratio
         w.Write(lsd);
 
         // Global Palette
-        foreach (IColor c in Palette.Plan9)
+        for (int i = 0; i < 256; i++)
         {
-            var (r, g, b1, _) = c.GetRGBA();
+            var (r, g, b1, _) = palette[i].GetRGBA();
             w.WriteByte((byte)(r >> 8));
             w.WriteByte((byte)(g >> 8));
             w.WriteByte((byte)(b1 >> 8));
         }
+
+        // Quantize image to palette
+        var paletted = Paletted.NewPaletted(b, palette);
+        Drawer.Draw(paletted, b, img, b.Min, Op.Src);
 
         // Image Descriptor
         w.WriteByte(0x2C);
