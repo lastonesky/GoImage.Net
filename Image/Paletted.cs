@@ -7,7 +7,7 @@ namespace GoImage.Image;
 /// <summary>
 /// Paletted is an in-memory image of uint8 indices into a given palette.
 /// </summary>
-public class Paletted : IImage, IImage64
+public class Paletted : IImage, IImage64, IDrawImage
 {
     public byte[] Pix;
     public int Stride;
@@ -21,6 +21,12 @@ public class Paletted : IImage, IImage64
 
     public IModel ColorModel() => Palette;
     public Rectangle Bounds() => Rect;
+
+    public void Set(int x, int y, IColor c)
+    {
+        if (!new Point(x, y).In(Rect)) return;
+        Pix[PixOffset(x, y)] = (byte)Palette.Index(c);
+    }
 
     public IColor At(int x, int y)
     {

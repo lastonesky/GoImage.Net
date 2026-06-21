@@ -5,6 +5,10 @@
 
 using GoImage.Color;
 using GoImage.Image;
+using System.Buffers;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace GoImage.Bmp;
 
@@ -20,46 +24,6 @@ public static class BmpReader
     public static readonly Exception ErrUnsupported = new NotSupportedException("bmp: unsupported BMP image");
 
     private static readonly Exception errInvalidPaletteIndex = new FormatException("bmp: invalid palette index");
-
-    private static ushort ReadUint16(byte[] b, int offset)
-    {
-        return (ushort)(b[offset] | (b[offset + 1] << 8));
-    }
-
-    private static uint ReadUint32(byte[] b, int offset)
-    {
-        return (uint)(b[offset] | (b[offset + 1] << 8) | (b[offset + 2] << 16) | (b[offset + 3] << 24));
-    }
-
-    /// <summary>
-    /// ReadFull reads exactly buf.Length bytes from the stream into buf.
-    /// </summary>
-    private static void ReadFull(Stream r, byte[] buf)
-    {
-        int totalRead = 0;
-        while (totalRead < buf.Length)
-        {
-            int n = r.Read(buf, totalRead, buf.Length - totalRead);
-            if (n == 0)
-                throw new EndOfStreamException(totalRead == 0 ? "unexpected EOF at start" : "unexpected EOF");
-            totalRead += n;
-        }
-    }
-
-    /// <summary>
-    /// ReadFull reads exactly len bytes from the stream into a segment of buf.
-    /// </summary>
-    private static void ReadFull(Stream r, byte[] buf, int offset, int len)
-    {
-        int totalRead = 0;
-        while (totalRead < len)
-        {
-            int n = r.Read(buf, offset + totalRead, len - totalRead);
-            if (n == 0)
-                throw new EndOfStreamException(totalRead == 0 ? "unexpected EOF at start" : "unexpected EOF");
-            totalRead += n;
-        }
-    }
 
     /// <summary>
     /// decodePaletted reads a 1, 2, 4 or 8 bit-per-pixel BMP image from r.
@@ -85,27 +49,34 @@ public static class BmpReader
         int pixelsPerByte = 8 / bpp;
         // Pad up to ensure each row is 4-bytes aligned.
         int bytesPerRow = ((c.Width + pixelsPerByte - 1) / pixelsPerByte + 3) & ~3;
-        byte[] b = new byte[bytesPerRow];
-
-        for (int y = y0; y != y1; y += yDelta)
+        
+        byte[] b = ArrayPool<byte>.Shared.Rent(bytesPerRow);
+        try
         {
-            int pixBase = y * paletted.Stride;
-            ReadFull(r, b);
-            int byteIndex = 0, bitIndex = 8;
-            byte mask = (byte)((1 << bpp) - 1);
-            for (int pixIndex = 0; pixIndex < c.Width; pixIndex++)
+            for (int y = y0; y != y1; y += yDelta)
             {
-                bitIndex -= bpp;
-                byte paletteIndex = (byte)((b[byteIndex] >> bitIndex) & mask);
-                if (paletteIndex >= palette.Count)
-                    throw errInvalidPaletteIndex;
-                paletted.Pix[pixBase + pixIndex] = paletteIndex;
-                if (bitIndex == 0)
+                int pixBase = y * paletted.Stride;
+                r.ReadExactly(b.AsSpan(0, bytesPerRow));
+                int byteIndex = 0, bitIndex = 8;
+                byte mask = (byte)((1 << bpp) - 1);
+                for (int pixIndex = 0; pixIndex < c.Width; pixIndex++)
                 {
-                    byteIndex++;
-                    bitIndex = 8;
+                    bitIndex -= bpp;
+                    byte paletteIndex = (byte)((b[byteIndex] >> bitIndex) & mask);
+                    if (paletteIndex >= palette.Count)
+                        throw errInvalidPaletteIndex;
+                    paletted.Pix[pixBase + pixIndex] = paletteIndex;
+                    if (bitIndex == 0)
+                    {
+                        byteIndex++;
+                        bitIndex = 8;
+                    }
                 }
             }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(b);
         }
         return paletted;
     }
@@ -121,30 +92,34 @@ public static class BmpReader
             return rgba;
 
         // There are 3 bytes per pixel, and each row is 4-byte aligned.
-        byte[] b = new byte[(3 * c.Width + 3) & ~3];
-        int y0, y1, yDelta;
-        if (topDown)
+        int bytesPerRow = (3 * c.Width + 3) & ~3;
+        byte[] b = ArrayPool<byte>.Shared.Rent(bytesPerRow);
+        try
         {
-            y0 = 0; y1 = c.Height; yDelta = 1;
-        }
-        else
-        {
-            y0 = c.Height - 1; y1 = -1; yDelta = -1;
-        }
-
-        for (int y = y0; y != y1; y += yDelta)
-        {
-            ReadFull(r, b);
-            int pBase = y * rgba.Stride;
-            int pLen = c.Width * 4;
-            for (int i = 0, j = 0; i < pLen; i += 4, j += 3)
+            int y0, y1, yDelta;
+            if (topDown)
             {
-                // BMP images are stored in BGR order rather than RGB order.
-                rgba.Pix[pBase + i + 0] = b[j + 2];
-                rgba.Pix[pBase + i + 1] = b[j + 1];
-                rgba.Pix[pBase + i + 2] = b[j + 0];
-                rgba.Pix[pBase + i + 3] = 0xFF;
+                y0 = 0; y1 = c.Height; yDelta = 1;
             }
+            else
+            {
+                y0 = c.Height - 1; y1 = -1; yDelta = -1;
+            }
+
+            for (int y = y0; y != y1; y += yDelta)
+            {
+                r.ReadExactly(b.AsSpan(0, bytesPerRow));
+                var row = rgba.GetRowSpan(y);
+                for (int i = 0, j = 0; i < c.Width; i++, j += 3)
+                {
+                    // BMP images are stored in BGR order rather than RGB order.
+                    row[i] = new Color.RGBA(b[j + 2], b[j + 1], b[j + 0], 0xFF);
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(b);
         }
         return rgba;
     }
@@ -169,17 +144,45 @@ public static class BmpReader
             y0 = c.Height - 1; y1 = -1; yDelta = -1;
         }
 
+        Vector128<byte> shuffleMask = Vector128.Create(
+            (byte)2, 1, 0, 3,
+            6, 5, 4, 7,
+            10, 9, 8, 11,
+            14, 13, 12, 15
+        );
+        Vector128<byte> alphaMask = Vector128.Create(
+            (byte)0, 0, 0, 0xFF,
+            0, 0, 0, 0xFF,
+            0, 0, 0, 0xFF,
+            0, 0, 0, 0xFF
+        );
+
         for (int y = y0; y != y1; y += yDelta)
         {
-            int pBase = y * nrgba.Stride;
-            int pLen = c.Width * 4;
-            ReadFull(r, nrgba.Pix, pBase, pLen);
-            for (int i = pBase; i < pBase + pLen; i += 4)
+            var row = nrgba.GetRowSpan(y);
+            var rowBytes = MemoryMarshal.Cast<Color.NRGBA, byte>(row);
+            r.ReadExactly(rowBytes);
+
+            int i = 0;
+            if (Vector128.IsHardwareAccelerated)
             {
-                // BMP images are stored in BGRA order rather than RGBA order.
-                (nrgba.Pix[i + 0], nrgba.Pix[i + 2]) = (nrgba.Pix[i + 2], nrgba.Pix[i + 0]);
-                if (!allowAlpha)
-                    nrgba.Pix[i + 3] = 0xFF;
+                for (; i <= rowBytes.Length - 16; i += 16)
+                {
+                    var v = Vector128.LoadUnsafe(ref rowBytes[i]);
+                    v = Vector128.Shuffle(v, shuffleMask);
+                    if (!allowAlpha)
+                    {
+                        v |= alphaMask;
+                    }
+                    v.StoreUnsafe(ref rowBytes[i]);
+                }
+            }
+
+            // Remainder
+            for (int j = i / 4; j < row.Length; j++)
+            {
+                var p = row[j];
+                row[j] = new Color.NRGBA(p.B, p.G, p.R, allowAlpha ? p.A : (byte)0xFF);
             }
         }
         return nrgba;
@@ -229,88 +232,97 @@ public static class BmpReader
         const int v4InfoHeaderLen = 108;
         const int v5InfoHeaderLen = 124;
 
-        byte[] b = new byte[1024];
-        ReadFull(r, b, 0, fileHeaderLen + 4);
-
-        if (b[0] != 'B' || b[1] != 'M')
-            throw new FormatException("bmp: invalid format");
-
-        uint offset = ReadUint32(b, 10);
-        uint infoLen = ReadUint32(b, 14);
-        if (infoLen != infoHeaderLen && infoLen != v4InfoHeaderLen && infoLen != v5InfoHeaderLen)
-            throw ErrUnsupported;
-
-        ReadFull(r, b, fileHeaderLen + 4, (int)(infoLen - 4));
-
-        int width = (int)(int)ReadUint32(b, 18);
-        int height = (int)(int)ReadUint32(b, 22);
-        bool topDown = false;
-        if (height < 0)
+        byte[] b = ArrayPool<byte>.Shared.Rent(1024);
+        try
         {
-            height = -height;
-            topDown = true;
+            r.ReadExactly(b.AsSpan(0, fileHeaderLen + 4));
+
+            if (b[0] != 'B' || b[1] != 'M')
+                throw new FormatException("bmp: invalid format");
+
+            uint offset = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(10));
+            uint infoLen = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(14));
+            if (infoLen != infoHeaderLen && infoLen != v4InfoHeaderLen && infoLen != v5InfoHeaderLen)
+                throw ErrUnsupported;
+
+            r.ReadExactly(b.AsSpan(fileHeaderLen + 4, (int)(infoLen - 4)));
+
+            int width = (int)BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(18));
+            int height = (int)BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(22));
+            bool topDown = false;
+            if (height < 0)
+            {
+                height = -height;
+                topDown = true;
+            }
+            if (width < 0 || height < 0)
+                throw ErrUnsupported;
+
+            // We only support 1 plane and 8, 24 or 32 bits per pixel and no compression.
+            ushort planes = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(26));
+            ushort bpp = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(28));
+            uint compression = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(30));
+
+            // if compression is set to BI_BITFIELDS, but the bitmask is set to the default bitmask
+            // that would be used if compression was set to 0, we can continue as if compression was 0
+            if (compression == 3 && infoLen > infoHeaderLen &&
+                BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(54)) == 0xff0000 &&
+                BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(58)) == 0xff00 &&
+                BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(62)) == 0xff &&
+                BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(66)) == 0xff000000)
+            {
+                compression = 0;
+            }
+
+            if (planes != 1 || compression != 0)
+                throw ErrUnsupported;
+
+            switch (bpp)
+            {
+                case 1:
+                case 2:
+                case 4:
+                case 8:
+                    {
+                        uint colorUsed = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(46));
+                        if (colorUsed == 0)
+                            colorUsed = (uint)(1 << bpp);
+                        else if (colorUsed > (1 << bpp))
+                            throw ErrUnsupported;
+
+                        if (offset != fileHeaderLen + infoLen + colorUsed * 4)
+                            throw ErrUnsupported;
+
+                        r.ReadExactly(b.AsSpan(0, (int)(colorUsed * 4)));
+                        var pcm = new Palette();
+                        for (int i = 0; i < (int)colorUsed; i++)
+                        {
+                            // BMP images are stored in BGR order rather than RGB order.
+                            // Every 4th byte is padding.
+                            pcm.Add(new Color.RGBA(b[4 * i + 2], b[4 * i + 1], b[4 * i + 0], 0xFF));
+                        }
+                        return (new Config { ColorModel = pcm, Width = width, Height = height }, bpp, topDown, false);
+                    }
+                case 24:
+                    {
+                        if (offset != fileHeaderLen + infoLen)
+                            throw ErrUnsupported;
+                        return (new Config { ColorModel = ColorModels.RGBAModel, Width = width, Height = height }, 24, topDown, false);
+                    }
+                case 32:
+                    {
+                        if (offset != fileHeaderLen + infoLen)
+                            throw ErrUnsupported;
+                        // 32 bits per pixel is possibly RGBX (X is padding) or RGBA.
+                        // See the extensive comment in Go's reader.go about alpha handling.
+                        bool allowAlpha = infoLen > infoHeaderLen;
+                        return (new Config { ColorModel = ColorModels.RGBAModel, Width = width, Height = height }, 32, topDown, allowAlpha);
+                    }
+            }
         }
-        if (width < 0 || height < 0)
-            throw ErrUnsupported;
-
-        // We only support 1 plane and 8, 24 or 32 bits per pixel and no compression.
-        ushort planes = ReadUint16(b, 26);
-        ushort bpp = ReadUint16(b, 28);
-        uint compression = ReadUint32(b, 30);
-
-        // if compression is set to BI_BITFIELDS, but the bitmask is set to the default bitmask
-        // that would be used if compression was set to 0, we can continue as if compression was 0
-        if (compression == 3 && infoLen > infoHeaderLen &&
-            ReadUint32(b, 54) == 0xff0000 && ReadUint32(b, 58) == 0xff00 &&
-            ReadUint32(b, 62) == 0xff && ReadUint32(b, 66) == 0xff000000)
+        finally
         {
-            compression = 0;
-        }
-
-        if (planes != 1 || compression != 0)
-            throw ErrUnsupported;
-
-        switch (bpp)
-        {
-            case 1:
-            case 2:
-            case 4:
-            case 8:
-            {
-                uint colorUsed = ReadUint32(b, 46);
-                if (colorUsed == 0)
-                    colorUsed = (uint)(1 << bpp);
-                else if (colorUsed > (1 << bpp))
-                    throw ErrUnsupported;
-
-                if (offset != fileHeaderLen + infoLen + colorUsed * 4)
-                    throw ErrUnsupported;
-
-                ReadFull(r, b, 0, (int)(colorUsed * 4));
-                var pcm = new Palette();
-                for (int i = 0; i < (int)colorUsed; i++)
-                {
-                    // BMP images are stored in BGR order rather than RGB order.
-                    // Every 4th byte is padding.
-                    pcm.Add(new Color.RGBA(b[4 * i + 2], b[4 * i + 1], b[4 * i + 0], 0xFF));
-                }
-                return (new Config { ColorModel = pcm, Width = width, Height = height }, bpp, topDown, false);
-            }
-            case 24:
-            {
-                if (offset != fileHeaderLen + infoLen)
-                    throw ErrUnsupported;
-                return (new Config { ColorModel = ColorModels.RGBAModel, Width = width, Height = height }, 24, topDown, false);
-            }
-            case 32:
-            {
-                if (offset != fileHeaderLen + infoLen)
-                    throw ErrUnsupported;
-                // 32 bits per pixel is possibly RGBX (X is padding) or RGBA.
-                // See the extensive comment in Go's reader.go about alpha handling.
-                bool allowAlpha = infoLen > infoHeaderLen;
-                return (new Config { ColorModel = ColorModels.RGBAModel, Width = width, Height = height }, 32, topDown, allowAlpha);
-            }
+            ArrayPool<byte>.Shared.Return(b);
         }
         throw ErrUnsupported;
     }

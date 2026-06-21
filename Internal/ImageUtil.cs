@@ -1,7 +1,6 @@
-// Port of Go's image/internal/imageutil/impl.go (DrawYCbCr).
-
 using GoImage.Color;
 using GoImage.Image;
+using System.Runtime.CompilerServices;
 
 namespace GoImage.Internal;
 
@@ -13,10 +12,10 @@ public static class ImageUtil
 {
     public static bool DrawYCbCr(Image.RGBA dst, Rectangle r, YCbCr src, Point sp)
     {
-        int x0 = (r.Min.X - dst.Rect.Min.X) * 4;
-        int x1 = (r.Max.X - dst.Rect.Min.X) * 4;
-        int y0 = r.Min.Y - dst.Rect.Min.Y;
-        int y1 = r.Max.Y - dst.Rect.Min.Y;
+        int y0 = r.Min.Y;
+        int y1 = r.Max.Y;
+        int x0 = r.Min.X;
+        int x1 = r.Max.X;
 
         switch (src.SubsampleRatio)
         {
@@ -35,14 +34,14 @@ public static class ImageUtil
 
     private static bool DrawYCbCr444(Image.RGBA dst, YCbCr src, Point sp, int x0, int x1, int y0, int y1)
     {
-        for (int y = y0, sy = sp.Y; y != y1; y++, sy++)
+        for (int y = y0, sy = sp.Y; y < y1; y++, sy++)
         {
-            int dpixBase = y * dst.Stride;
+            var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ci = (sy - src.Rect.Min.Y) * src.CStride + (sp.X - src.Rect.Min.X);
-            for (int x = x0; x != x1; x += 4, yi++, ci++)
+            for (int x = 0; x < row.Length; x++, yi++, ci++)
             {
-                ConvertAndStore(dst.Pix, dpixBase + x, src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;
@@ -50,15 +49,15 @@ public static class ImageUtil
 
     private static bool DrawYCbCr422(Image.RGBA dst, YCbCr src, Point sp, int x0, int x1, int y0, int y1)
     {
-        for (int y = y0, sy = sp.Y; y != y1; y++, sy++)
+        for (int y = y0, sy = sp.Y; y < y1; y++, sy++)
         {
-            int dpixBase = y * dst.Stride;
+            var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ciBase = (sy - src.Rect.Min.Y) * src.CStride - src.Rect.Min.X / 2;
-            for (int x = x0, sx = sp.X; x != x1; x += 4, sx++, yi++)
+            for (int x = 0, sx = sp.X; x < row.Length; x++, sx++, yi++)
             {
                 int ci = ciBase + sx / 2;
-                ConvertAndStore(dst.Pix, dpixBase + x, src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;
@@ -66,15 +65,15 @@ public static class ImageUtil
 
     private static bool DrawYCbCr420(Image.RGBA dst, YCbCr src, Point sp, int x0, int x1, int y0, int y1)
     {
-        for (int y = y0, sy = sp.Y; y != y1; y++, sy++)
+        for (int y = y0, sy = sp.Y; y < y1; y++, sy++)
         {
-            int dpixBase = y * dst.Stride;
+            var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ciBase = (sy / 2 - src.Rect.Min.Y / 2) * src.CStride - src.Rect.Min.X / 2;
-            for (int x = x0, sx = sp.X; x != x1; x += 4, sx++, yi++)
+            for (int x = 0, sx = sp.X; x < row.Length; x++, sx++, yi++)
             {
                 int ci = ciBase + sx / 2;
-                ConvertAndStore(dst.Pix, dpixBase + x, src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;
@@ -82,23 +81,21 @@ public static class ImageUtil
 
     private static bool DrawYCbCr440(Image.RGBA dst, YCbCr src, Point sp, int x0, int x1, int y0, int y1)
     {
-        for (int y = y0, sy = sp.Y; y != y1; y++, sy++)
+        for (int y = y0, sy = sp.Y; y < y1; y++, sy++)
         {
-            int dpixBase = y * dst.Stride;
+            var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ci = (sy / 2 - src.Rect.Min.Y / 2) * src.CStride + (sp.X - src.Rect.Min.X);
-            for (int x = x0; x != x1; x += 4, yi++, ci++)
+            for (int x = 0; x < row.Length; x++, yi++, ci++)
             {
-                ConvertAndStore(dst.Pix, dpixBase + x, src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;
     }
 
-    /// <summary>
-    /// Inline YCbCr to RGB conversion matching Go's bit-twiddling implementation.
-    /// </summary>
-    private static void ConvertAndStore(byte[] pix, int offset, byte yy, byte cb, byte cr)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Color.RGBA ConvertToRGBA(byte yy, byte cb, byte cr)
     {
         int yy1 = yy * 0x10101;
         int cb1 = cb - 128;
@@ -116,9 +113,6 @@ public static class ImageUtil
         if (((uint)b & 0xff000000) == 0) b >>= 16;
         else b = ~(b >> 31);
 
-        pix[offset] = (byte)r;
-        pix[offset + 1] = (byte)g;
-        pix[offset + 2] = (byte)b;
-        pix[offset + 3] = 255;
+        return new Color.RGBA((byte)r, (byte)g, (byte)b, 255);
     }
 }

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>GoImage</RootNamespace>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Cli\**</DefaultItemExcludes>
   </PropertyGroup>
 
 </Project>
