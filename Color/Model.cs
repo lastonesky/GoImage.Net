@@ -114,6 +114,9 @@ public static class ColorModels
 /// </summary>
 public class Palette : List<IColor>, IModel
 {
+    private byte[]? _cache;
+    private uint _cacheKey;
+
     public Palette() : base() { }
     public Palette(IEnumerable<IColor> collection) : base(collection) { }
 
@@ -126,6 +129,35 @@ public class Palette : List<IColor>, IModel
     public int Index(IColor c)
     {
         var (cr, cg, cb, ca) = c.GetRGBA();
+        
+        // If it's a small palette (like GIF), use a 15-bit RGB lookup table.
+        if (Count > 0 && Count <= 256)
+        {
+            if (_cache == null || _cacheKey != (uint)Count)
+            {
+                _cache = new byte[32768];
+                for (int i = 0; i < 32768; i++)
+                {
+                    int r = (i >> 10) & 0x1F;
+                    int g = (i >> 5) & 0x1F;
+                    int b = i & 0x1F;
+                    // Scale 5-bit to 16-bit
+                    uint r16 = (uint)(r << 11) | (uint)(r << 6) | (uint)(r << 1);
+                    uint g16 = (uint)(g << 11) | (uint)(g << 6) | (uint)(g << 1);
+                    uint b16 = (uint)(b << 11) | (uint)(b << 6) | (uint)(b << 1);
+                    _cache[i] = (byte)IndexLinear(r16, g16, b16, 0xffff);
+                }
+                _cacheKey = (uint)Count;
+            }
+            int ci = ((int)(cr >> 11) << 10) | ((int)(cg >> 11) << 5) | (int)(cb >> 11);
+            return _cache[ci];
+        }
+
+        return IndexLinear(cr, cg, cb, ca);
+    }
+
+    private int IndexLinear(uint cr, uint cg, uint cb, uint ca)
+    {
         int ret = 0;
         uint bestSum = uint.MaxValue;
         for (int i = 0; i < Count; i++)
@@ -141,5 +173,35 @@ public class Palette : List<IColor>, IModel
             }
         }
         return ret;
+    }
+
+    /// <summary>
+    /// Plan9 is a 256-color palette. 
+    /// This is a placeholder for the actual Plan9 palette.
+    /// </summary>
+    public static readonly Palette Plan9 = GeneratePlan9();
+
+    private static Palette GeneratePlan9()
+    {
+        var p = new Palette();
+        // The Plan 9 palette is a 6x6x6 color cube with 40 additional gray levels.
+        // This is a more accurate representation of the Plan 9 palette.
+        for (int r = 0; r < 6; r++)
+        {
+            for (int g = 0; g < 6; g++)
+            {
+                for (int b = 0; b < 6; b++)
+                {
+                    p.Add(new RGBA((byte)(255 - r * 255 / 5), (byte)(255 - g * 255 / 5), (byte)(255 - b * 255 / 5), 255));
+                }
+            }
+        }
+        // Add remaining grayscale and other colors to fill 256
+        for (int i = p.Count; i < 256; i++)
+        {
+            byte v = (byte)(255 - (i - 216) * 255 / 39);
+            p.Add(new RGBA(v, v, v, 255));
+        }
+        return p;
     }
 }

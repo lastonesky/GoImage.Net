@@ -5,6 +5,7 @@
 
 using GoImage.Color;
 using GoImage.Image;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -35,34 +36,110 @@ public static class PngWriter
         WriteChunk(w, "IHDR", ihdr);
 
         // Write IDAT
-        using (var ms = new MemoryStream())
+        // We use a custom stream to wrap the IDAT chunk writing to avoid MemoryStream.ToArray()
+        using (var idatWriter = new IdatWriter(w))
         {
-            using (var zlib = new ZLibStream(ms, CompressionLevel.Optimal, true))
+            using (var zlib = new ZLibStream(idatWriter, CompressionLevel.Optimal, true))
             {
-                byte[] row = new byte[width * 4 + 1];
-                for (int y = b.Min.Y; y < b.Max.Y; y++)
+                int rowSize = width * 4 + 1;
+                byte[] row = ArrayPool<byte>.Shared.Rent(rowSize);
+                try
                 {
-                    row[0] = 0; // Filter type: None
-                    for (int x = b.Min.X; x < b.Max.X; x++)
+                    for (int y = b.Min.Y; y < b.Max.Y; y++)
                     {
-                        var c = (Color.RGBA)ColorModels.RGBAModel.Convert(img.At(x, y));
-                        int off = 1 + (x - b.Min.X) * 4;
-                        row[off] = c.R;
-                        row[off + 1] = c.G;
-                        row[off + 2] = c.B;
-                        row[off + 3] = c.A;
+                        row[0] = 0; // Filter type: None
+                        var rowSpan = row.AsSpan(1, width * 4);
+
+                        if (img is GoImage.Image.RGBA rgbaImg)
+                        {
+                            var srcRow = rgbaImg.GetRowSpan(y);
+                            var dstRow = MemoryMarshal.Cast<byte, Color.RGBA>(rowSpan);
+                            srcRow.CopyTo(dstRow);
+                        }
+                        else
+                        {
+                            for (int x = b.Min.X; x < b.Max.X; x++)
+                            {
+                                var c = (Color.RGBA)ColorModels.RGBAModel.Convert(img.At(x, y));
+                                int off = (x - b.Min.X) * 4;
+                                rowSpan[off] = c.R;
+                                rowSpan[off + 1] = c.G;
+                                rowSpan[off + 2] = c.B;
+                                rowSpan[off + 3] = c.A;
+                            }
+                        }
+                        zlib.Write(row, 0, rowSize);
                     }
-                    zlib.Write(row);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(row);
                 }
             }
-            WriteChunk(w, "IDAT", ms.ToArray());
         }
 
         // Write IEND
         WriteChunk(w, "IEND", Array.Empty<byte>());
     }
 
-    private static void WriteChunk(Stream w, string type, byte[] data)
+    private class IdatWriter : Stream
+    {
+        private readonly Stream _w;
+        private readonly byte[] _buffer;
+        private int _pos;
+
+        public IdatWriter(Stream w)
+        {
+            _w = w;
+            _buffer = ArrayPool<byte>.Shared.Rent(32768);
+            _pos = 0;
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            while (count > 0)
+            {
+                int toCopy = Math.Min(count, _buffer.Length - _pos);
+                Buffer.BlockCopy(buffer, offset, _buffer, _pos, toCopy);
+                _pos += toCopy;
+                offset += toCopy;
+                count -= toCopy;
+
+                if (_pos == _buffer.Length) FlushBuffer();
+            }
+        }
+
+        private void FlushBuffer()
+        {
+            if (_pos > 0)
+            {
+                WriteChunk(_w, "IDAT", _buffer.AsSpan(0, _pos));
+                _pos = 0;
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                FlushBuffer();
+                ArrayPool<byte>.Shared.Return(_buffer);
+            }
+            base.Dispose(disposing);
+        }
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => _w.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+    }
+
+    private static void WriteChunk(Stream w, string type, ReadOnlySpan<byte> data)
     {
         byte[] lenBuf = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(lenBuf, data.Length);
@@ -98,7 +175,7 @@ public static class PngWriter
         return table;
     }
 
-    private static uint Crc32(byte[] type, byte[] data)
+    private static uint Crc32(ReadOnlySpan<byte> type, ReadOnlySpan<byte> data)
     {
         uint crc = 0xffffffff;
         foreach (byte b in type) crc = crcTable[(crc ^ b) & 0xff] ^ (crc >> 8);

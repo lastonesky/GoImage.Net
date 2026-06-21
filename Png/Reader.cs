@@ -187,11 +187,11 @@ internal class PngDecoder
         var r = Rect.New(0, 0, _width, _height);
         return _colorType switch
         {
-            0 => _bitDepth == 16 ? Gray16Image.NewGray16(r) : Gray.NewGray(r),
-            2 => _bitDepth == 16 ? RGBA64Image.NewRGBA64(r) : RGBA.NewRGBA(r),
+            0 => _bitDepth == 16 ? Gray16Image.NewGray16(r) : GoImage.Image.Gray.NewGray(r),
+            2 => _bitDepth == 16 ? RGBA64Image.NewRGBA64(r) : GoImage.Image.RGBA.NewRGBA(r),
             3 => Paletted.NewPaletted(r, _palette!),
-            4 => _bitDepth == 16 ? RGBA64Image.NewRGBA64(r) : RGBA.NewRGBA(r),
-            6 => _bitDepth == 16 ? RGBA64Image.NewRGBA64(r) : RGBA.NewRGBA(r),
+            4 => _bitDepth == 16 ? RGBA64Image.NewRGBA64(r) : GoImage.Image.RGBA.NewRGBA(r),
+            6 => _bitDepth == 16 ? RGBA64Image.NewRGBA64(r) : GoImage.Image.RGBA.NewRGBA(r),
             _ => throw new NotSupportedException()
         };
     }
@@ -238,17 +238,17 @@ internal class PngDecoder
 
     private void ProcessLine(IImage img, int y, byte[] line)
     {
-        if (img is RGBA rgba)
+        if (img is GoImage.Image.RGBA rgba)
         {
             var row = rgba.GetRowSpan(y);
             if (_colorType == 2 && _bitDepth == 8) // RGB
             {
                 for (int x = 0; x < _width; x++)
-                    row[x] = new Color.RGBA(line[x * 3], line[x * 3 + 1], line[x * 3 + 2], 0xff);
+                    row[x] = new GoImage.Color.RGBA(line[x * 3], line[x * 3 + 1], line[x * 3 + 2], 0xff);
             }
             else if (_colorType == 6 && _bitDepth == 8) // RGBA
             {
-                var lineSpan = MemoryMarshal.Cast<byte, Color.RGBA>(line);
+                var lineSpan = MemoryMarshal.Cast<byte, GoImage.Color.RGBA>(line);
                 lineSpan.CopyTo(row);
             }
         }
@@ -256,7 +256,7 @@ internal class PngDecoder
         {
             line.CopyTo(paletted.Pix, y * paletted.Stride);
         }
-        else if (img is Gray gray)
+        else if (img is GoImage.Image.Gray gray)
         {
             line.CopyTo(gray.Pix, y * gray.Stride);
         }

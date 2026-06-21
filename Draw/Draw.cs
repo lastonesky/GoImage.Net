@@ -48,21 +48,29 @@ public static class Drawer
         if (r.Empty()) return;
 
         // Fast paths
-        if (mask == null && op == Op.Src && dst is RGBA rgbaDst)
+        if (mask == null && op == Op.Src)
         {
-            if (src is Uniform uniformSrc)
+            if (dst is GoImage.Image.RGBA rgbaDst)
             {
-                DrawFillRGBA(rgbaDst, r, (Color.RGBA)ColorModels.RGBAModel.Convert(uniformSrc.C));
-                return;
+                if (src is Uniform uniformSrc)
+                {
+                    DrawFillRGBA(rgbaDst, r, (GoImage.Color.RGBA)ColorModels.RGBAModel.Convert(uniformSrc.C));
+                    return;
+                }
+                if (src is GoImage.Image.RGBA rgbaSrc)
+                {
+                    DrawCopyRGBA(rgbaDst, r, rgbaSrc, sp);
+                    return;
+                }
             }
-            if (src is RGBA rgbaSrc)
+            else if (dst is Paletted palettedDst)
             {
-                DrawCopyRGBA(rgbaDst, r, rgbaSrc, sp);
+                DrawToPaletted(palettedDst, r, src, sp);
                 return;
             }
         }
 
-        if (mask == null && op == Op.Over && dst is RGBA rgbaDstOver && src is RGBA rgbaSrcOver)
+        if (mask == null && op == Op.Over && dst is GoImage.Image.RGBA rgbaDstOver && src is GoImage.Image.RGBA rgbaSrcOver)
         {
             DrawOverRGBA(rgbaDstOver, r, rgbaSrcOver, sp);
             return;
@@ -137,7 +145,7 @@ public static class Drawer
                         var (_, _, _, ma) = m.GetRGBA();
                         if (ma == 0)
                         {
-                            dst.Set(x, y, Color.RGBA.Transparent);
+                            dst.Set(x, y, StandardColors.Transparent);
                         }
                         else if (ma == 0xffff)
                         {
@@ -162,7 +170,7 @@ public static class Drawer
         if (sa == 0) return dst;
         if (sa == 0xffff) return src;
 
-        int a = 0xffff - sa;
+        uint a = 0xffff - sa;
         return new RGBA64(
             (ushort)((sr + (dr * a) / 0xffff)),
             (ushort)((sg + (dg * a) / 0xffff)),
@@ -182,7 +190,7 @@ public static class Drawer
         );
     }
 
-    private static void DrawFillRGBA(RGBA dst, Rectangle r, Color.RGBA c)
+    private static void DrawFillRGBA(GoImage.Image.RGBA dst, Rectangle r, GoImage.Color.RGBA c)
     {
         for (int y = r.Min.Y; y < r.Max.Y; y++)
         {
@@ -191,7 +199,7 @@ public static class Drawer
         }
     }
 
-    private static void DrawCopyRGBA(RGBA dst, Rectangle r, RGBA src, Point sp)
+    private static void DrawCopyRGBA(GoImage.Image.RGBA dst, Rectangle r, GoImage.Image.RGBA src, Point sp)
     {
         int dx = sp.X - r.Min.X;
         int dy = sp.Y - r.Min.Y;
@@ -203,7 +211,7 @@ public static class Drawer
         }
     }
 
-    private static void DrawOverRGBA(RGBA dst, Rectangle r, RGBA src, Point sp)
+    private static void DrawOverRGBA(GoImage.Image.RGBA dst, Rectangle r, GoImage.Image.RGBA src, Point sp)
     {
         int dx = sp.X - r.Min.X;
         int dy = sp.Y - r.Min.Y;
@@ -223,12 +231,39 @@ public static class Drawer
                 }
                 var d = dstRow[x];
                 int a = 255 - s.A;
-                dstRow[x] = new Color.RGBA(
+                dstRow[x] = new GoImage.Color.RGBA(
                     (byte)(s.R + (d.R * a) / 255),
                     (byte)(s.G + (d.G * a) / 255),
                     (byte)(s.B + (d.B * a) / 255),
                     (byte)(s.A + (d.A * a) / 255)
                 );
+            }
+        }
+    }
+
+    private static void DrawToPaletted(Paletted dst, Rectangle r, IImage src, Point sp)
+    {
+        int dx = sp.X - r.Min.X;
+        int dy = sp.Y - r.Min.Y;
+        var pal = dst.Palette;
+
+        for (int y = r.Min.Y; y < r.Max.Y; y++)
+        {
+            var dstRow = dst.Pix.AsSpan(dst.PixOffset(r.Min.X, y), r.Dx());
+            if (src is GoImage.Image.RGBA rgbaSrc)
+            {
+                var srcRow = rgbaSrc.GetRowSpan(y + dy).Slice(r.Min.X + dx - rgbaSrc.Rect.Min.X, r.Dx());
+                for (int x = 0; x < r.Dx(); x++)
+                {
+                    dstRow[x] = (byte)pal.Index(srcRow[x]);
+                }
+            }
+            else
+            {
+                for (int x = 0; x < r.Dx(); x++)
+                {
+                    dstRow[x] = (byte)pal.Index(src.At(x + r.Min.X + dx, y + dy));
+                }
             }
         }
     }
