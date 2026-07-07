@@ -133,6 +133,51 @@ public class YCbCr : IImage, IImage64
         _ => (y - Rect.Min.Y) * CStride + (x - Rect.Min.X),
     };
 
+    public IImage SubImage(Rectangle r)
+    {
+        r = r.Intersect(Rect);
+        if (r.Empty()) return new YCbCr(Array.Empty<byte>(), Array.Empty<byte>(), Array.Empty<byte>(),
+            0, 0, YCbCrSubsampleRatio.YCbCrSubsampleRatio444, default);
+
+        var (w, h, cw, ch) = YCbCrSize(r, SubsampleRatio);
+        int yLen = h * YStride;
+        int cbLen = ch * CStride;
+        int crLen = ch * CStride;
+
+        byte[] newBuf = new byte[yLen + cbLen + crLen];
+
+        // Copy Y plane - one row at a time
+        for (int y = 0; y < h; y++)
+        {
+            int srcOff = YOffset(r.Min.X, r.Min.Y + y);
+            Array.Copy(_buf, _yOff + srcOff, newBuf, y * YStride, YStride);
+        }
+
+        // Determine vertical subsampling factor for chroma
+        int vertSubSample = (SubsampleRatio == YCbCrSubsampleRatio.YCbCrSubsampleRatio420 ||
+                             SubsampleRatio == YCbCrSubsampleRatio.YCbCrSubsampleRatio440 ||
+                             SubsampleRatio == YCbCrSubsampleRatio.YCbCrSubsampleRatio410) ? 2 : 1;
+
+        // Copy Cb plane
+        for (int yc = 0; yc < ch; yc++)
+        {
+            int yy = r.Min.Y + yc * vertSubSample;
+            int srcOff = COffset(r.Min.X, yy);
+            Array.Copy(_buf, _cbOff + srcOff, newBuf, yLen + yc * CStride, CStride);
+        }
+
+        // Copy Cr plane
+        for (int yc = 0; yc < ch; yc++)
+        {
+            int yy = r.Min.Y + yc * vertSubSample;
+            int srcOff = COffset(r.Min.X, yy);
+            Array.Copy(_buf, _crOff + srcOff, newBuf, yLen + cbLen + yc * CStride, CStride);
+        }
+
+        return new YCbCr(newBuf, 0, yLen, yLen, cbLen, yLen + cbLen, crLen,
+                         YStride, CStride, SubsampleRatio, r);
+    }
+
     public bool Opaque() => true;
 
     public static (int w, int h, int cw, int ch) YCbCrSize(Rectangle r, YCbCrSubsampleRatio subsampleRatio)

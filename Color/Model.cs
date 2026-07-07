@@ -122,7 +122,7 @@ public class Palette : List<IColor>, IModel
 
     public IColor Convert(IColor c)
     {
-        if (Count == 0) return null!;
+        if (Count == 0) return StandardColors.Transparent;
         return this[Index(c)];
     }
 
@@ -176,8 +176,10 @@ public class Palette : List<IColor>, IModel
     }
 
     /// <summary>
-    /// Plan9 is a 256-color palette. 
-    /// This is a placeholder for the actual Plan9 palette.
+    /// Plan9 is a 256-color palette.
+    /// Note: This is a simplified Plan 9 palette. Go's Plan 9 uses precisely
+    /// defined colors (4×4×4 sub-cube division, 256 colors). This implementation
+    /// produces visually similar but not identical results.
     /// </summary>
     public static readonly Palette Plan9 = GeneratePlan9();
 
@@ -201,6 +203,31 @@ public class Palette : List<IColor>, IModel
         {
             byte v = (byte)(255 - (i - 216) * 255 / 39);
             p.Add(new RGBA(v, v, v, 255));
+        }
+        return p;
+    }
+
+    /// <summary>
+    /// WebSafe is the 216-color "web safe" palette.
+    /// See Go's color/palette.Palette.WebSafe.
+    /// </summary>
+    public static readonly Palette WebSafe = GenerateWebSafe();
+
+    private static Palette GenerateWebSafe()
+    {
+        var p = new Palette();
+        for (int r = 0; r < 6; r++)
+        {
+            for (int g = 0; g < 6; g++)
+            {
+                for (int b = 0; b < 6; b++)
+                {
+                    byte vR = (byte)(r * 51);
+                    byte vG = (byte)(g * 51);
+                    byte vB = (byte)(b * 51);
+                    p.Add(new RGBA(vR, vG, vB, 255));
+                }
+            }
         }
         return p;
     }

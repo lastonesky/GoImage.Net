@@ -39,9 +39,9 @@ public static class ImageUtil
             var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ci = (sy - src.Rect.Min.Y) * src.CStride + (sp.X - src.Rect.Min.X);
-            for (int x = 0; x < row.Length; x++, yi++, ci++)
+            for (int x = x0; x < x1; x++, yi++, ci++)
             {
-                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x - dst.Rect.Min.X] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;
@@ -54,10 +54,10 @@ public static class ImageUtil
             var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ciBase = (sy - src.Rect.Min.Y) * src.CStride - src.Rect.Min.X / 2;
-            for (int x = 0, sx = sp.X; x < row.Length; x++, sx++, yi++)
+            for (int x = x0, sx = sp.X; x < x1; x++, sx++, yi++)
             {
                 int ci = ciBase + sx / 2;
-                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x - dst.Rect.Min.X] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;
@@ -70,10 +70,10 @@ public static class ImageUtil
             var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ciBase = (sy / 2 - src.Rect.Min.Y / 2) * src.CStride - src.Rect.Min.X / 2;
-            for (int x = 0, sx = sp.X; x < row.Length; x++, sx++, yi++)
+            for (int x = x0, sx = sp.X; x < x1; x++, sx++, yi++)
             {
                 int ci = ciBase + sx / 2;
-                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x - dst.Rect.Min.X] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;
@@ -86,9 +86,9 @@ public static class ImageUtil
             var row = dst.GetRowSpan(y);
             int yi = (sy - src.Rect.Min.Y) * src.YStride + (sp.X - src.Rect.Min.X);
             int ci = (sy / 2 - src.Rect.Min.Y / 2) * src.CStride + (sp.X - src.Rect.Min.X);
-            for (int x = 0; x < row.Length; x++, yi++, ci++)
+            for (int x = x0; x < x1; x++, yi++, ci++)
             {
-                row[x] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
+                row[x - dst.Rect.Min.X] = ConvertToRGBA(src.GetY(yi), src.GetCb(ci), src.GetCr(ci));
             }
         }
         return true;

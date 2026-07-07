@@ -60,7 +60,7 @@ public static class PngWriter
                         {
                             for (int x = b.Min.X; x < b.Max.X; x++)
                             {
-                                var c = (Color.RGBA)ColorModels.RGBAModel.Convert(img.At(x, y));
+                                var c = (Color.NRGBA)ColorModels.NRGBAModel.Convert(img.At(x, y));
                                 int off = (x - b.Min.X) * 4;
                                 rowSpan[off] = c.R;
                                 rowSpan[off + 1] = c.G;

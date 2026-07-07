@@ -38,14 +38,36 @@ public static class Drawer
 
     public static void DrawMask(IDrawImage dst, Rectangle r, IImage src, Point sp, IImage? mask, Point mp, Op op)
     {
+        // Save original r before clipping — it defines the alignment reference
+        // between dst(r.Min) and src(sp) / mask(mp).
+        Rectangle originalR = r;
+
         r = r.Intersect(dst.Bounds());
-        r = r.Intersect(src.Bounds().Add(r.Min.Sub(sp)));
+        // Transform src bounds to dst coordinate space using originalR.Min as anchor.
+        // After dst-clip, r.Min may have changed, but sp still refers to originalR.Min.
+        r = r.Intersect(src.Bounds().Add(originalR.Min.Sub(sp)));
         if (mask != null)
         {
-            r = r.Intersect(mask.Bounds().Add(r.Min.Sub(mp)));
+            r = r.Intersect(mask.Bounds().Add(originalR.Min.Sub(mp)));
         }
 
         if (r.Empty()) return;
+
+        // Adjust sp/mp to account for dst clipping so downstream code
+        // can compute offsets as (sp.X - r.Min.X) etc. correctly.
+        sp = new Point(sp.X - originalR.Min.X + r.Min.X, sp.Y - originalR.Min.Y + r.Min.Y);
+        if (mask != null)
+        {
+            mp = new Point(mp.X - originalR.Min.X + r.Min.X, mp.Y - originalR.Min.Y + r.Min.Y);
+        }
+
+        // Handle src/dst overlap: if they share the same backing memory,
+        // copy the needed src region to a temporary buffer first.
+        if (NeedsTempSrc(dst, src, r, sp))
+        {
+            src = CopySrcRegion(src, r, sp);
+            sp = new Point(r.Min.X, r.Min.Y);
+        }
 
         // Fast paths
         if (mask == null && op == Op.Src)
@@ -81,8 +103,8 @@ public static class Drawer
         int y0 = r.Min.Y, y1 = r.Max.Y;
         int dx = sp.X - x0;
         int dy = sp.Y - y0;
-        int mx = mp.X - x0;
-        int my = mp.Y - y0;
+        int mx = mask != null ? mp.X - x0 : 0;
+        int my = mask != null ? mp.Y - y0 : 0;
 
         if (mask == null)
         {
@@ -266,6 +288,62 @@ public static class Drawer
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Returns true if src and dst share backing memory, which would cause
+    /// read-after-write corruption without a temporary copy.
+    /// </summary>
+    private static bool NeedsTempSrc(IDrawImage dst, IImage src, Rectangle r, Point sp)
+    {
+        if (ReferenceEquals(src, dst))
+            return true;
+
+        if (src is GoImage.Image.RGBA rgbaSrc && dst is GoImage.Image.RGBA rgbaDst && rgbaSrc.Pix == rgbaDst.Pix)
+            return true;
+
+        if (src is Paletted palSrc && dst is Paletted palDst && palSrc.Pix == palDst.Pix)
+            return true;
+
+        if (src is GoImage.Image.Gray graySrc && dst is GoImage.Image.Gray grayDst && graySrc.Pix == grayDst.Pix)
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Copies the source region [sp, sp+r.Size) into a fresh RGBA image.
+    /// Used as a temporary buffer when src and dst overlap.
+    /// </summary>
+    private static IImage CopySrcRegion(IImage src, Rectangle r, Point sp)
+    {
+        int w = r.Dx();
+        int h = r.Dy();
+        var temp = GoImage.Image.RGBA.NewRGBA(Rect.New(0, 0, w, h));
+
+        // Fast path: RGBA source — bulk row copy.
+        if (src is GoImage.Image.RGBA rgbaSrc)
+        {
+            int sx0 = sp.X - rgbaSrc.Rect.Min.X;
+            int sy0 = sp.Y - rgbaSrc.Rect.Min.Y;
+            for (int y = 0; y < h; y++)
+            {
+                var srcRow = rgbaSrc.GetRowSpan(rgbaSrc.Rect.Min.Y + sy0 + y).Slice(sx0, w);
+                var dstRow = temp.GetRowSpan(y).Slice(0, w);
+                srcRow.CopyTo(dstRow);
+            }
+            return temp;
+        }
+
+        // Generic fallback: per-pixel At/Set.
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                temp.Set(x, y, src.At(sp.X + x, sp.Y + y));
+            }
+        }
+        return temp;
     }
 }
 

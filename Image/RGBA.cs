@@ -88,11 +88,16 @@ public class RGBA : IImage<Color.RGBA>, IImage64, IDrawImage
     {
         r = r.Intersect(Rect);
         if (r.Empty()) return new RGBA(Array.Empty<byte>(), 0, default);
-        // Note: In a high-performance version, we should avoid ToArray()
-        // and instead use a view mechanism. For now, we keep the original logic
-        // but it's a candidate for further optimization if zero-copy is required.
-        int i = PixOffset(r.Min.X, r.Min.Y);
-        return new RGBA(Pix, Stride, r); // Just pass the same array but with new Rect
+        int width = r.Dx();
+        int height = r.Dy();
+        int newStride = width * 4;
+        byte[] newPix = new byte[height * newStride];
+        for (int y = 0; y < height; y++)
+        {
+            int srcOff = PixOffset(r.Min.X, r.Min.Y + y);
+            Array.Copy(Pix, srcOff, newPix, y * newStride, width * 4);
+        }
+        return new RGBA(newPix, newStride, r);
     }
 
     public bool Opaque()
@@ -265,5 +270,80 @@ public class NRGBA : IImage<Color.NRGBA>, IImage64, IDrawImage
     {
         int bufLen = ImageMath.PixelBufferLength(4, r, "NRGBA");
         return new NRGBA(new byte[bufLen], 4 * r.Dx(), r);
+    }
+}
+
+/// <summary>
+/// NRGBA64 is an in-memory image whose At method returns Color.NRGBA64 values.
+/// </summary>
+public class NRGBA64Image : IImage<Color.NRGBA64>, IImage64, IDrawImage
+{
+    public byte[] Pix;
+    public int Stride;
+    public Rectangle Rect;
+
+    public NRGBA64Image(byte[] pix, int stride, Rectangle rect)
+    {
+        Pix = pix; Stride = stride; Rect = rect;
+    }
+
+    public IModel ColorModel() => ColorModels.NRGBA64Model;
+    public Rectangle Bounds() => Rect;
+    public IColor At(int x, int y) => NRGBA64At(x, y);
+
+    public void Set(int x, int y, IColor c)
+    {
+        if (!new Point(x, y).In(Rect)) return;
+        SetNRGBA64(x, y, (Color.NRGBA64)ColorModels.NRGBA64Model.Convert(c));
+    }
+
+    public Color.NRGBA64 this[int x, int y]
+    {
+        get => NRGBA64At(x, y);
+        set => SetNRGBA64(x, y, value);
+    }
+
+    public Span<Color.NRGBA64> GetRowSpan(int y)
+    {
+        if (y < Rect.Min.Y || y >= Rect.Max.Y) return Span<Color.NRGBA64>.Empty;
+        int i = PixOffset(Rect.Min.X, y);
+        return MemoryMarshal.Cast<byte, Color.NRGBA64>(Pix.AsSpan(i, Rect.Dx() * 8));
+    }
+
+    public RGBA64 RGBA64At(int x, int y)
+    {
+        var c = NRGBA64At(x, y);
+        var (r, g, b, a) = c.GetRGBA();
+        return new RGBA64((ushort)r, (ushort)g, (ushort)b, (ushort)a);
+    }
+
+    public Color.NRGBA64 NRGBA64At(int x, int y)
+    {
+        if (!new Point(x, y).In(Rect)) return default;
+        int i = PixOffset(x, y);
+        return new Color.NRGBA64(
+            (ushort)((Pix[i] << 8) | Pix[i + 1]),
+            (ushort)((Pix[i + 2] << 8) | Pix[i + 3]),
+            (ushort)((Pix[i + 4] << 8) | Pix[i + 5]),
+            (ushort)((Pix[i + 6] << 8) | Pix[i + 7]));
+    }
+
+    public void SetNRGBA64(int x, int y, Color.NRGBA64 c)
+    {
+        if (!new Point(x, y).In(Rect)) return;
+        int i = PixOffset(x, y);
+        Pix[i] = (byte)(c.R >> 8); Pix[i + 1] = (byte)c.R;
+        Pix[i + 2] = (byte)(c.G >> 8); Pix[i + 3] = (byte)c.G;
+        Pix[i + 4] = (byte)(c.B >> 8); Pix[i + 5] = (byte)c.B;
+        Pix[i + 6] = (byte)(c.A >> 8); Pix[i + 7] = (byte)c.A;
+    }
+
+    public int PixOffset(int x, int y) =>
+        (y - Rect.Min.Y) * Stride + (x - Rect.Min.X) * 8;
+
+    public static NRGBA64Image NewNRGBA64(Rectangle r)
+    {
+        int bufLen = ImageMath.PixelBufferLength(8, r, "NRGBA64");
+        return new NRGBA64Image(new byte[bufLen], 8 * r.Dx(), r);
     }
 }

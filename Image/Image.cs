@@ -40,6 +40,14 @@ public interface IDrawImage : IImage
 }
 
 /// <summary>
+/// PalettedImage is an IImage whose pixels may be returned as indices from a palette.
+/// </summary>
+public interface IPalettedImage : IImage
+{
+    byte ColorIndexAt(int x, int y);
+}
+
+/// <summary>
 /// Config holds an image's color model and dimensions.
 /// </summary>
 public struct Config

@@ -7,7 +7,7 @@ namespace GoImage.Image;
 /// <summary>
 /// Paletted is an in-memory image of uint8 indices into a given palette.
 /// </summary>
-public class Paletted : IImage, IImage64, IDrawImage
+public class Paletted : IPalettedImage, IImage64, IDrawImage
 {
     public byte[] Pix;
     public int Stride;
@@ -66,6 +66,34 @@ public class Paletted : IImage, IImage64, IDrawImage
         if (!new Point(x, y).In(Rect)) return;
         int i = PixOffset(x, y);
         Pix[i] = index;
+    }
+
+    public IImage SubImage(Rectangle r)
+    {
+        r = r.Intersect(Rect);
+        if (r.Empty()) return new Paletted(Array.Empty<byte>(), 0, default, Palette);
+        int width = r.Dx();
+        int height = r.Dy();
+        int newStride = width;
+        byte[] newPix = new byte[height * newStride];
+        for (int y = 0; y < height; y++)
+        {
+            int srcOff = PixOffset(r.Min.X, r.Min.Y + y);
+            Array.Copy(Pix, srcOff, newPix, y * newStride, width);
+        }
+        return new Paletted(newPix, newStride, r, Palette);
+    }
+
+    public bool Opaque()
+    {
+        if (Rect.Empty()) return true;
+        if (Palette.Count == 0) return false;
+        for (int i = 0; i < Palette.Count; i++)
+        {
+            var (_, _, _, a) = Palette[i].GetRGBA();
+            if (a != 0xffff) return false;
+        }
+        return true;
     }
 
     public static Paletted NewPaletted(Rectangle r, Palette p)

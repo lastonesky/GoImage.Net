@@ -66,6 +66,22 @@ public class Gray : IImage<Color.Gray>, IImage64, IDrawImage
         Pix[i] = c.Y;
     }
 
+    public IImage SubImage(Rectangle r)
+    {
+        r = r.Intersect(Rect);
+        if (r.Empty()) return new Gray(Array.Empty<byte>(), 0, default);
+        int width = r.Dx();
+        int height = r.Dy();
+        int newStride = width;
+        byte[] newPix = new byte[height * newStride];
+        for (int y = 0; y < height; y++)
+        {
+            int srcOff = PixOffset(r.Min.X, r.Min.Y + y);
+            Array.Copy(Pix, srcOff, newPix, y * newStride, width);
+        }
+        return new Gray(newPix, newStride, r);
+    }
+
     public bool Opaque() => true;
 
     public static Gray NewGray(Rectangle r)
@@ -134,6 +150,22 @@ public class Gray16Image : IImage<Color.Gray16>, IImage64, IDrawImage
 
     public int PixOffset(int x, int y) =>
         (y - Rect.Min.Y) * Stride + (x - Rect.Min.X) * 2;
+
+    public IImage SubImage(Rectangle r)
+    {
+        r = r.Intersect(Rect);
+        if (r.Empty()) return new Gray16Image(Array.Empty<byte>(), 0, default);
+        int width = r.Dx();
+        int height = r.Dy();
+        int newStride = width * 2;
+        byte[] newPix = new byte[height * newStride];
+        for (int y = 0; y < height; y++)
+        {
+            int srcOff = PixOffset(r.Min.X, r.Min.Y + y);
+            Array.Copy(Pix, srcOff, newPix, y * newStride, width * 2);
+        }
+        return new Gray16Image(newPix, newStride, r);
+    }
 
     public bool Opaque() => true;
 

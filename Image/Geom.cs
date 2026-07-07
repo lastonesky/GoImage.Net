@@ -26,6 +26,24 @@ public struct Point
 
     public bool Eq(Point q) => X == q.X && Y == q.Y;
 
+    // Mod returns the point q in r such that q.X == r.Min.X + (p.X - r.Min.X) mod r.Dx()
+    // with a non-negative modulus.
+    // See Go's Point.Mod in image/geom.go
+    public Point Mod(Rectangle r)
+    {
+        int w = r.Dx();
+        int h = r.Dy();
+        int x = X - r.Min.X;
+        int y = Y - r.Min.Y;
+        if (w < 0) { x = -x; w = -w; }
+        if (h < 0) { y = -y; h = -h; }
+        x = x % w;
+        y = y % h;
+        if (x < 0) x += w;
+        if (y < 0) y += h;
+        return new Point(x + r.Min.X, y + r.Min.Y);
+    }
+
     public static bool operator ==(Point a, Point b) => a.X == b.X && a.Y == b.Y;
     public static bool operator !=(Point a, Point b) => !(a == b);
     public override bool Equals(object? obj) => obj is Point p && this == p;
@@ -91,6 +109,18 @@ public struct Rectangle
 
     public bool Eq(Rectangle s) => this == s || (Empty() && s.Empty());
 
+    // Canon returns the canonical rectangle for r, i.e., a rectangle
+    // with swapped Min and Max if necessary.
+    // See Go's Rectangle.Canon in image/geom.go
+    public Rectangle Canon()
+    {
+        int x0 = Min.X, x1 = Max.X;
+        if (x0 > x1) { x0 = x1; x1 = Min.X; }
+        int y0 = Min.Y, y1 = Max.Y;
+        if (y0 > y1) { y0 = y1; y1 = Min.Y; }
+        return new Rectangle(new Point(x0, y0), new Point(x1, y1));
+    }
+
     public bool Overlaps(Rectangle s) =>
         !Empty() && !s.Empty() &&
         Min.X < s.Max.X && s.Min.X < Max.X &&
@@ -101,6 +131,20 @@ public struct Rectangle
         if (Empty()) return true;
         return s.Min.X <= Min.X && Max.X <= s.Max.X &&
                s.Min.Y <= Min.Y && Max.Y <= s.Max.Y;
+    }
+
+    // Inset returns the rectangle inset by n in all directions.
+    // If the resulting width or height is <= 0, returns a rectangle centered
+    // in the middle of r.
+    // See Go's Rectangle.Inset in image/geom.go
+    public Rectangle Inset(int n)
+    {
+        Rectangle r = this;
+        r.Min.X += n; r.Min.Y += n;
+        r.Max.X -= n; r.Max.Y -= n;
+        if (r.Dx() < 0) r.Min.X = r.Max.X = (Min.X + Max.X) / 2;
+        if (r.Dy() < 0) r.Min.Y = r.Max.Y = (Min.Y + Max.Y) / 2;
+        return r;
     }
 
     public static bool operator ==(Rectangle a, Rectangle b) => a.Min == b.Min && a.Max == b.Max;
