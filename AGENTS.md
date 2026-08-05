@@ -15,6 +15,8 @@ High-performance C# .NET port of Go's standard library `image` packages — BMP/
 dotnet build GoImage.csproj                    # Build the library
 dotnet build Cli/GoImage.Cli.csproj            # Build the CLI
 dotnet run --project Cli -- <input> <output>   # Convert an image (registers BMP/PNG/GIF/JPEG codecs)
+dotnet pack GoImage.csproj -c Release          # Produce NuGet package (nupkg/ output)
+./scripts/publish.sh 0.1.0                     # Pack + push to nuget.org (needs NUGET_API_KEY)
 ```
 
 No `dotnet test` — no test project exists.

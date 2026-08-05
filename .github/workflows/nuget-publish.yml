@@ -1,0 +1,54 @@
+name: nuget-publish
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+# OIDC trusted publishing 需要读取 ID Token 的权限
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    # 对应 nuget.org 上配置的 trusted publishing environment
+    environment: production
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      # 由 tag vX.Y.Z 自动提取版本号；手动触发时回退到 GoImage.csproj 中的 <Version>
+      - name: Pack
+        shell: pwsh
+        run: |
+          $version = $null
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -match '^v\d') {
+            $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          }
+          if ($version) {
+            dotnet pack .\GoImage.csproj -c Release -p:Version=$version -o .\artifacts\nuget
+          } else {
+            dotnet pack .\GoImage.csproj -c Release -o .\artifacts\nuget
+          }
+
+      # OIDC trusted sign-in：以 nuget.org 账号换取短期 API Key（无需保存密钥）
+      - name: NuGet Login
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: 'LastOneSky'
+
+      # *.nupkg 通配符同时覆盖 nupkg 与 snupkg
+      - name: Push (nupkg & snupkg)
+        shell: pwsh
+        run: |
+          dotnet nuget push .\artifacts\nuget\*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --skip-duplicate

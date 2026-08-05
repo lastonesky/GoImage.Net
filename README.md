@@ -81,3 +81,28 @@ GoImage 遵循了 Go 语言 `image` 包的精髓：
 ## 开源协议
 
 本项目基于 BSD-style 协议（源自 Go 语言项目）。具体参见代码文件头部的声明。
+
+## NuGet 发布
+
+类库 `GoImage.csproj` 已配置打包元数据（版本、license、README、符号包等），生成物输出到仓库根目录 `nupkg/`。
+
+```bash
+# 本地打包（只生成 nupkg / snupkg）
+dotnet pack GoImage.csproj -c Release
+
+# 构建并发布到 nuget.org（API Key 通过环境变量或参数提供）
+NUGET_API_KEY=<你的key> ./scripts/publish.sh 0.1.0
+```
+
+### 自动发布（GitHub Actions + OIDC trusted sign-in）
+
+仓库已配置 `.github/workflows/nuget-publish.yml`，配合 nuget.org 的 [trusted publishing](https://www.nuget.org/account/publishing/policies)（package owner `LastOneSky`、environment `production`）实现免密钥发布：
+
+- **推 tag** `v*`（如 `v0.2.0`）→ 自动打包（版本取 tag，去掉 `v` 前缀）并推送 nupkg + snupkg
+- **手动触发** → 在 Actions 页面 Run workflow，使用 `GoImage.csproj` 中的 `<Version>`
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+发布前在 [nuget.org](https://www.nuget.org/account/apikeys) 生成 API Key（建议勾选 *Push new packages and package versions* 权限）。版本号在 `GoImage.csproj` 的 `<Version>` 中维护，也可用 `-p:Version=` 覆盖。

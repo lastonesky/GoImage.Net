@@ -58,8 +58,6 @@ public partial class Decoder
     }
 
     /// <summary>
-
-    /// <summary>
     /// processSOS processes a Start Of Scan marker (section B.2.3).
     /// </summary>
     internal unsafe void ProcessSOS(int n)

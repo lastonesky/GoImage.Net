@@ -9,4 +9,35 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);Cli\**</DefaultItemExcludes>
   </PropertyGroup>
 
+  <!-- ===== NuGet 打包配置 ===== -->
+  <PropertyGroup>
+    <!-- 版本号：发布时在此处递增，或使用 -p:Version= 覆盖 -->
+    <Version>0.1.0</Version>
+    <PackageId>GoImage</PackageId>
+    <Authors>lastonesky</Authors>
+    <Company>lastonesky</Company>
+    <Product>GoImage</Product>
+    <Description>High-performance C# .NET port of Go's standard library image packages — BMP/JPEG/PNG/GIF codecs and a draw engine.</Description>
+    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/lastonesky/GoImage.Net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/lastonesky/GoImage.Net.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageTags>image;imaging;png;jpeg;jpg;gif;bmp;draw;graphics;codec;go</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- 生成 XML 文档（连同注释一起打进包，供 IDE 智能提示） -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- 项目约定：仅 public 类型/关键方法带 XML 注释，故豁免 CS1591 -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- 符号包：随 nupkg 一起生成 *.snupkg -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- nupkg 输出目录（相对仓库根） -->
+    <PackageOutputPath>$(MSBuildThisFileDirectory)nupkg</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
 </Project>

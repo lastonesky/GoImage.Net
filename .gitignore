@@ -24,6 +24,9 @@ bld/
 project.lock.json
 project.fragment.lock.json
 
+# NuGet publish artifacts (GitHub Actions workflow output)
+artifacts/
+
 # Visual Studio
 .vs/
 *.suo
@@ -142,3 +145,4 @@ node_modules/
 
 # AI Agents
 .reasonix/
+reasonix.toml
